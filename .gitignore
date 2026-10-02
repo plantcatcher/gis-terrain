@@ -1,0 +1,20 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+*.tsbuildinfo
+vite.config.d.ts
+
+# Vite / 临时构建产物
+vite.config.ts.timestamp-*.mjs
+
+# 本地工作缓存（非项目交付物）
+.workbuddy/
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/

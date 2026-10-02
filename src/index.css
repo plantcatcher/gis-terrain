@@ -1,0 +1,2344 @@
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --accent: #7c3aed;
+  --bg: #e9eef7;
+  --text: #0f172a;
+  --text-soft: #475569;
+  --success: #16a34a;
+  --danger: #dc2626;
+  /* 半透明表面：--panel 浮层 / --surface 面板内卡片 / --control 按钮控件 */
+  --panel: rgba(255, 255, 255, 0.72);
+  --panel-strong: rgba(255, 255, 255, 0.9);
+  --surface: rgba(255, 255, 255, 0.5);
+  --surface-soft: rgba(248, 250, 252, 0.55);
+  --control: rgba(255, 255, 255, 0.52);
+  --border: rgba(148, 163, 184, 0.42);
+  --shadow: 0 6px 22px rgba(15, 23, 42, 0.1);
+  --blur: saturate(170%) blur(16px);
+  --header-glass: saturate(180%) blur(20px);
+  /**
+   * 顶栏是浮在地图上的，它的高度决定其余浮层往下让多少。
+   * 这里只是首帧兜底值 —— App.tsx 用 ResizeObserver 实测后覆盖，
+   * 因为顶栏会因窗口变窄而换行、行高也随系统字体设置变化，写死必然失准。
+   */
+  --header-h: 64px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  color: var(--text);
+}
+
+/* 半透明界面需要一个有内容的底色，否则“玻璃”效果看不出来 */
+html {
+  background: var(--bg);
+  /* 移动端：避免下拉刷新 / 橡皮筋滚动打断地图拖拽 */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 移动端浏览器地址栏会伸缩，100% 高度会跟着跳 → 用动态视口单位锁住 */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+}
+
+body {
+  background:
+    radial-gradient(1100px 620px at 6% -14%, rgba(37, 99, 235, 0.22), transparent 62%),
+    radial-gradient(900px 520px at 104% -8%, rgba(124, 58, 237, 0.2), transparent 58%),
+    radial-gradient(900px 700px at 52% 120%, rgba(14, 165, 233, 0.18), transparent 62%),
+    linear-gradient(160deg, #f4f7fc 0%, #e8eef8 55%, #e2eaf6 100%);
+  background-attachment: fixed;
+}
+
+#root {
+  background: transparent;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* ---------------- App 布局 ---------------- */
+
+.app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/**
+ * 顶栏做成浮层（脱离文档流），地图铺满整屏并**延伸到顶栏下面**。
+ * 只有这样 backdrop-filter 才有东西可模糊 —— 之前顶栏虽然写了半透明，
+ * 但它在文档流里、背后只是纯色底，看起来就是一块不透明的白条。
+ */
+.app-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  /* 比浮窗的 --panel（0.72）再透一点：顶栏压在卫星影像上，透出来才有玻璃感 */
+  background: rgba(255, 255, 255, 0.64);
+  backdrop-filter: var(--header-glass);
+  -webkit-backdrop-filter: var(--header-glass);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 2px 14px rgba(15, 23, 42, 0.07);
+  /* 必须高于地图控件与所有浮层，否则拖地图时会从顶栏下面穿出来 */
+  z-index: 20;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-icon {
+  font-size: 28px;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.brand p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+/* ---------------- 步骤指示器 ---------------- */
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1.5px solid var(--border);
+  color: var(--text-soft);
+  background: var(--control);
+}
+
+.step-label {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.step-active .step-dot {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.step-active .step-label {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.step-done .step-dot {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+
+.step-done .step-label {
+  color: var(--text);
+}
+
+.stepper-line {
+  width: 22px;
+  height: 2px;
+  background: var(--border);
+}
+
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ---------------- 搜索 ---------------- */
+
+.search-box {
+  position: relative;
+}
+
+.search-box input {
+  width: 260px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  background: var(--control);
+  color: var(--text);
+  transition: border-color 0.2s;
+}
+
+.search-box input:focus {
+  border-color: var(--primary);
+}
+
+.search-loading {
+  position: absolute;
+  right: 12px;
+  top: 8px;
+  color: var(--text-soft);
+}
+
+.search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--panel-strong);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.search-results li {
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.search-results li:hover {
+  background: rgba(241, 245, 249, 0.72);
+}
+
+/* ---------------- 底图 ---------------- */
+
+.basemap-switch {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.basemap-btn {
+  padding: 7px 12px;
+  border: none;
+  background: var(--panel);
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.basemap-btn.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* ---------------- 主体 ---------------- */
+
+/* 地图铺满整个工作区，左右两侧面板以浮窗形式叠在它上面 */
+.app-body {
+  position: absolute;
+  inset: 0;
+}
+
+.map-wrap {
+  position: absolute;
+  inset: 0;
+}
+
+.map-container {
+  position: absolute;
+  inset: 0;
+}
+
+/* 地图控件默认贴角，顶栏浮起来后会把它压在下面，往下让一个顶栏的高度 */
+.map-container .maplibregl-ctrl-top-right {
+  top: calc(var(--header-h) + 8px);
+}
+
+/* 居中浮层（工具栏 / 提示条 / 错误条）要在两侧浮窗之间居中，而不是整屏居中 */
+.toolbar,
+.hint-banner,
+.error-banner {
+  left: calc(50% + (var(--ov-left) - var(--ov-right)) / 2);
+}
+
+/* ---------------- 工具栏 ---------------- */
+
+.toolbar {
+  position: absolute;
+  /* 让开浮起的顶栏 */
+  top: calc(var(--header-h) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  padding: 8px 12px;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  z-index: 5;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100% - 28px - var(--ov-left) - var(--ov-right));
+}
+
+.tool-group {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border: none;
+  background: var(--panel);
+  color: var(--text-soft);
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tool-btn + .tool-btn {
+  border-left: 1px solid var(--border);
+}
+
+.tool-btn:hover {
+  color: var(--text);
+}
+
+.tool-btn.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.tool-icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 26px;
+  background: var(--border);
+}
+
+.mode-group {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: opacity 0.15s;
+}
+
+/* 手势模式下圈选不可用，视觉上弱化 */
+.mode-group.muted {
+  opacity: 0.45;
+}
+
+.mode-group.muted .mode-btn:hover {
+  color: var(--text-soft);
+}
+
+.mode-btn {
+  padding: 7px 14px;
+  border: none;
+  background: var(--panel);
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.mode-btn.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* ---------------- 选区中心浮标（面积 + 清除） ---------------- */
+/* Marker 容器：不吃地图事件，只有里面的清除按钮可点，避免挡住框选/拖动矢量 */
+.area-tag-wrap {
+  pointer-events: none;
+  user-select: none;
+}
+
+.area-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.78);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.32);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: area-tag-in 0.18s ease-out;
+}
+
+.area-tag.warn {
+  background: rgba(180, 83, 9, 0.86);
+}
+
+.area-tag.with-clear {
+  padding-right: 4px;
+}
+
+.area-tag-text {
+  line-height: 1.1;
+}
+
+.area-tag-warn {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.area-tag-clear {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  transition: background 0.15s;
+}
+
+.area-tag-clear:hover {
+  background: rgba(239, 68, 68, 0.92);
+}
+
+.area-tag-clear[hidden] {
+  display: none;
+}
+
+/* 只动透明度，不动 transform —— Marker 自身靠 transform 定位，动画会把它带偏 */
+@keyframes area-tag-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------------- 最高点 / 最低点说明气泡 ---------------- */
+
+.terrain-popup .maplibregl-popup-content {
+  padding: 12px 14px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.22);
+  font-size: 12.5px;
+}
+
+.map-popup-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.map-popup-title.high {
+  color: #dc2626;
+}
+
+.map-popup-title.low {
+  color: #2563eb;
+}
+
+.map-popup-value {
+  margin-top: 2px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.map-popup-value span {
+  margin-left: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.map-popup-coord {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.map-popup-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+
+.map-popup-foot {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.btn-analyze {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.btn-analyze:hover:not(:disabled) {
+  background: var(--primary-dark);
+}
+
+.btn-analyze:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.btn-secondary.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.btn-primary {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 13px;
+}
+
+.btn-ghost {
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-soft);
+  border-radius: 6px;
+}
+
+.btn-ghost:hover {
+  background: #f1f5f9;
+}
+
+/* ---------------- 提示/错误 ---------------- */
+
+.hint-banner {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.82);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 5;
+  white-space: nowrap;
+}
+
+.error-banner {
+  position: absolute;
+  top: calc(var(--header-h) + 20px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 40px - var(--ov-left) - var(--ov-right));
+}
+
+.error-banner button {
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  color: #991b1b;
+  cursor: pointer;
+}
+
+.error-retry {
+  font-size: 12px !important;
+  padding: 2px 10px !important;
+  border: 1px solid #fca5a5 !important;
+  border-radius: 6px !important;
+  background: #fff !important;
+  color: #991b1b !important;
+}
+
+/* ---------------- 结果浮窗 ---------------- */
+
+.results-panel {
+  position: absolute;
+  top: calc(var(--header-h) + 14px);
+  right: 14px;
+  bottom: 14px;
+  width: 440px;
+  z-index: 7;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
+}
+
+.results-panel.is-collapsed {
+  transform: translateX(calc(100% + 22px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 头部固定，正文单独滚动 —— 浮窗里不能整块滚 */
+.results-head {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.results-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.results-title h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+/* 标题 + 项目名：两行紧凑排布，项目名过长时省略而不是把标题挤换行 */
+.results-title-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.results-project {
+  font-size: 11.5px;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 230px;
+}
+
+/**
+ * 窄屏结果卡片顶部的展开/收起横条。
+ *
+ * 桌面端不用它（右侧有独立的收起按钮），默认 display:none；
+ * 只在窄屏媒体查询里变成可点按钮。它必须是**真元素**而不是伪元素：
+ * 伪元素上没法只让横条那一小片区域响应点击。
+ */
+.sheet-handle {
+  display: none;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.sheet-handle-bar {
+  display: block;
+  width: 38px;
+  height: 4px;
+  margin: 0 auto;
+  border-radius: 2px;
+  background: rgba(100, 116, 139, 0.5);
+}
+
+.results-head-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.results-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 22px;
+}
+
+.export-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 两个导出按钮平分整行。桌面 440px 面板里若按自然宽度左对齐，右侧会空出
+   一大片，看着像没排完；平分之后整齐，点击目标也更大（触屏笔记本同样受益）。 */
+.export-btns > button {
+  flex: 1;
+}
+
+/* 两个下拉并排一行（地形图层 / 派生分析） */
+.layer-selects {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.layer-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 150px;
+}
+
+.layer-select > select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 26px 6px 10px;
+  border: 1px solid var(--border);
+  background: var(--control);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+  /* 原生下拉箭头：不要系统默认那套灰底按钮样式，自己画一个三角 */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-soft) 50%),
+    linear-gradient(135deg, var(--text-soft) 50%, transparent 50%);
+  background-position: calc(100% - 14px) calc(50% + 1px), calc(100% - 9px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.layer-select > select:hover,
+.layer-select > select:focus-visible {
+  border-color: var(--primary);
+  outline: none;
+}
+
+/* 深色主题下原生下拉展开的面板会跟着系统走，这里只保证选项可读 */
+.layer-select > select > option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+@media (max-width: 520px) {
+  .layer-select {
+    flex: 1 1 100%;
+  }
+}
+
+.layer-label {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+/* ---------------- 章节标题与说明 ---------------- */
+
+.section-lead {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+
+.section-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--text-soft);
+  background: #f8fafc;
+  border-left: 3px solid var(--primary);
+  padding: 8px 10px;
+  border-radius: 4px;
+}
+
+/* 出错/警示用的提示（视域点到了选区外等） */
+.section-note.warn {
+  background: #fef2f2;
+  border-left-color: #dc2626;
+  color: #991b1b;
+}
+
+/* 正文顶部「当前图层」提示条：切换图层后用户常常不知道自己在看什么 */
+.layer-hint {
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-soft);
+  background: #f1f5f9;
+  border-radius: 6px;
+}
+
+.layer-hint b {
+  color: var(--primary);
+}
+
+/* 曲率构成条：直接复用 .landform-row 的三段式布局 */
+.curv-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+/* 视域参数（观察高度 / 搜索半径） */
+.viewshed-params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 12px;
+}
+
+.viewshed-params label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+
+.viewshed-params select {
+  padding: 5px 8px;
+  font-size: 12.5px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--control);
+}
+
+/* 结果说明里的色块示意 */
+.swatch-vis,
+.swatch-hid,
+.swatch-obs {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin: 0 3px 0 6px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+.swatch-vis {
+  background: rgb(190, 242, 100);
+}
+.swatch-hid {
+  background: rgb(30, 41, 59);
+}
+.swatch-obs {
+  background: #f59e0b;
+  border-radius: 50%;
+}
+
+.hint-high {
+  color: #dc2626;
+}
+.hint-low {
+  color: #2563eb;
+}
+
+.export-name code {
+  font-size: 11.5px;
+  color: var(--text);
+  background: #eef2f7;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.copyright {
+  font-size: 11px;
+  color: var(--text-soft);
+  background: transparent;
+  border-left: none;
+  padding: 0;
+}
+
+/* ---------------- 地形位置条 ---------------- */
+
+.landform-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.landform-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.landform-label {
+  width: 110px;
+  font-size: 12px;
+  color: var(--text);
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.landform-track {
+  flex: 1;
+  height: 14px;
+  background: #f1f5f9;
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.landform-fill {
+  height: 100%;
+  border-radius: 7px;
+  min-width: 2px;
+}
+
+.landform-val {
+  width: 48px;
+  font-size: 12px;
+  color: var(--text-soft);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.result-section {
+  margin-bottom: 22px;
+}
+
+.result-section h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.stat-card {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--text-soft);
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.stat-unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-soft);
+}
+
+.stat-hint {
+  font-size: 11px;
+  color: var(--text-soft);
+  margin-top: 3px;
+}
+
+.extreme-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.extreme-card {
+  border-radius: 10px;
+  padding: 12px;
+  color: #fff;
+}
+
+.extreme-card.high {
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+}
+
+.extreme-card.low {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+}
+
+.extreme-label {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.extreme-value {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 4px 0;
+}
+
+.extreme-coord {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.inline-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-soft);
+  margin-bottom: 10px;
+}
+
+.inline-stats b {
+  color: var(--text);
+}
+
+.profile-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.profile-controls .hint {
+  font-size: 12px;
+  color: var(--accent);
+}
+
+/* 剖面绘制中的状态行：提示 + 撤销 / 完成（触屏没有双击，靠按钮结算） */
+.profile-draft {
+  margin-top: -4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.profile-draft .hint {
+  flex: 1;
+  min-width: 132px;
+  color: var(--text-soft);
+}
+
+.profile-draft .hint b {
+  color: var(--accent);
+}
+
+.profile-draft button {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.description p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+.keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.keyword {
+  background: #eef2ff;
+  color: var(--primary);
+  padding: 4px 12px;
+  border-radius: 14px;
+  font-size: 12px;
+  border: 1px solid #c7d2fe;
+}
+
+/* ---------------- 进度遮罩 ---------------- */
+
+.progress-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.progress-card {
+  background: var(--panel);
+  border-radius: 16px;
+  padding: 28px 32px;
+  width: 340px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+
+.progress-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.progress-bar {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  transition: width 0.3s;
+  border-radius: 4px;
+}
+
+.progress-percent {
+  text-align: right;
+  font-size: 13px;
+  color: var(--text-soft);
+  margin-bottom: 14px;
+}
+
+.progress-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+}
+
+.progress-steps li {
+  font-size: 13px;
+  padding: 4px 0;
+  color: var(--text-soft);
+}
+
+.progress-steps li.done {
+  color: var(--success);
+}
+
+.progress-steps li.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.progress-msg {
+  font-size: 12px;
+  color: var(--text-soft);
+  text-align: center;
+}
+
+/* ---------------- 浮窗骨架 ---------------- */
+
+/* 铺满整个视口（含顶栏所占的那一条），让地图真正顶到窗口最上沿 */
+.app-main {
+  position: absolute;
+  inset: 0;
+  display: block;
+  /* 居中浮层要在"两侧浮窗之间"居中：这两个变量就是两侧被占掉的宽度 */
+  --ov-left: 0px;
+  --ov-right: 0px;
+}
+
+.app-main.with-sidebar {
+  --ov-left: 308px;
+}
+
+.app-main.with-results {
+  --ov-right: 468px;
+}
+
+/* ---------------- 左侧浮窗 ---------------- */
+
+.sidebar {
+  position: absolute;
+  top: calc(var(--header-h) + 14px);
+  left: 14px;
+  bottom: 14px;
+  width: 280px;
+  z-index: 6;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.18);
+  padding: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
+}
+
+.sidebar.is-collapsed {
+  transform: translateX(calc(-100% - 22px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 浮窗标题栏 */
+.float-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.float-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+}
+
+.float-collapse,
+.panel-toggle {
+  width: 26px;
+  height: 26px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--control);
+  color: var(--text-soft);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.float-collapse:hover,
+.panel-toggle:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* 项目列表自己滚，底图等其余区块固定不动。
+   关键是把滚动落到 .history-list 上：外层 .sidebar-scroll 不再滚，
+   否则项目一多就是"整块面板一起挤"，新建/底图会被顶出可视区。 */
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-right: 2px;
+}
+
+.sidebar-section {
+  flex-shrink: 0;
+}
+
+.history-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 面板底部版权署名（固定在滚动区之下，不随内容滚走） */
+.sidebar-foot {
+  flex-shrink: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-foot b {
+  font-size: 12px;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.sidebar-foot span {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+/* 面板收起后贴边的展开标签 */
+.float-tab {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 6;
+  width: 24px;
+  height: 68px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+  color: var(--text-soft);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.float-tab.left {
+  left: 0;
+  border-left: none;
+  border-radius: 0 12px 12px 0;
+}
+
+.float-tab.right {
+  right: 0;
+  border-right: none;
+  border-radius: 12px 0 0 12px;
+}
+
+.float-tab:hover {
+  color: var(--primary);
+  background: var(--panel-strong);
+}
+
+.new-analysis-btn {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  transition: background 0.2s;
+}
+
+.new-analysis-btn:hover {
+  background: var(--primary-dark);
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sidebar-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.basemap-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.basemap-btn {
+  padding: 9px 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-soft);
+  transition: all 0.15s;
+}
+
+.basemap-btn:hover {
+  border-color: var(--primary);
+}
+
+.basemap-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+/* 底图图层开关（路网与标注）——只对高德底图有效 */
+.layer-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--control);
+  font-size: 12.5px;
+  color: var(--text-soft);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s;
+}
+
+.layer-switch:hover {
+  border-color: var(--primary);
+}
+
+.layer-switch input {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.layer-switch em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.layer-switch.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.layer-switch.is-disabled:hover {
+  border-color: var(--border);
+}
+
+.basemap-hint {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-soft);
+  background: var(--surface-soft);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+/* 项目列表（内部标识仍沿用 history） */
+.history-section {
+  /* 见 .sidebar-scroll 处的说明：滚动交给 .history-list，
+     这里只负责把剩余高度分给列表、并允许它被压到 0 */
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.history-empty {
+  font-size: 12px;
+  color: var(--text-soft);
+  background: #f8fafc;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  line-height: 1.6;
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* 项目多时列表内部滚动，而不是把整块面板撑出去 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* 滚动条只占 4px，且不与条目圆角打架 */
+  padding-right: 2px;
+}
+
+.history-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 3px;
+}
+
+.history-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-item {
+  display: flex;
+  align-items: stretch;
+  /* 关键：不允许被压缩 —— 项目一多时每个条目保持原高度，
+     多出来的由 .history-list 滚动消化，而不是"挤成一条" */
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.history-item.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.history-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 9px 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.history-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-meta {
+  font-size: 11px;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 项目重命名：编辑态把整块主按钮换成「输入框 + 摘要」 */
+.history-main.is-editing {
+  gap: 4px;
+  padding: 8px 10px;
+  cursor: default;
+}
+
+.history-name-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  background: var(--control);
+  padding: 3px 7px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.history-rename {
+  flex-shrink: 0;
+  width: 30px;
+  border: none;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.history-rename:hover {
+  background: #eff6ff;
+  color: var(--primary);
+}
+
+.history-del {
+  flex-shrink: 0;
+  width: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.history-del:hover {
+  background: #fef2f2;
+  color: var(--danger);
+}
+
+/* ---------------- 加载动效 ---------------- */
+
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 3px solid rgba(37, 99, 235, 0.25);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  margin-right: 10px;
+  vertical-align: -3px;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.progress-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progress-cancel {
+  margin-top: 18px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #fca5a5;
+  background: #fff;
+  color: #dc2626;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.progress-cancel:hover {
+  background: #fef2f2;
+}
+
+/* ---------------- 半透明玻璃表面（统一覆盖层） ---------------- */
+/* 浮层/卡片/控件改为半透明 + 背景模糊。想要更透或更实，只改 :root 里的
+   --panel / --panel-strong / --surface / --control / --blur 即可，不必翻具体规则。 */
+
+/* 一级浮层：左侧栏 / 结果面板 / 工具栏 / 弹窗 */
+.sidebar,
+.results-panel,
+.toolbar,
+.progress-card {
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+
+/* 面板内的卡片与区块 */
+.stat-card,
+.history-item,
+.history-empty,
+.section-note {
+  background: var(--surface);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.stat-card,
+.history-item {
+  border: 1px solid var(--border);
+}
+
+.section-note {
+  border-left: 3px solid var(--primary);
+}
+
+/* 按钮/输入等控件统一半透明白 */
+.tool-btn,
+.mode-btn,
+.basemap-btn,
+.btn-secondary,
+.history-name-input,
+.search-box input {
+  background: var(--control);
+}
+
+/* 进度条 / 数据条等"槽" */
+.landform-track {
+  background: rgba(148, 163, 184, 0.24);
+}
+
+.progress-bar {
+  background: rgba(148, 163, 184, 0.28);
+}
+
+/* 悬停态 */
+.btn-ghost:hover {
+  background: rgba(241, 245, 249, 0.7);
+}
+
+.history-del:hover {
+  background: rgba(254, 242, 242, 0.85);
+}
+
+.history-rename:hover {
+  background: rgba(239, 246, 255, 0.85);
+}
+
+/* 极值卡片与关键词标签 */
+.extreme-card.high {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.82), rgba(239, 68, 68, 0.72));
+}
+
+.extreme-card.low {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.82), rgba(59, 130, 246, 0.72));
+}
+
+.keyword {
+  background: rgba(238, 242, 255, 0.72);
+  border-color: rgba(199, 210, 254, 0.8);
+}
+
+/* 提示条 / 错误条 / 模态 / 取消按钮 */
+.hint-banner {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.error-banner {
+  background: rgba(254, 242, 242, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.error-retry {
+  background: rgba(255, 255, 255, 0.7) !important;
+}
+
+.progress-card {
+  background: var(--panel-strong);
+}
+
+.progress-cancel {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.progress-overlay {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* ---------------- 移动端相关基础类（默认隐藏，窄屏才启用） ---------------- */
+
+/* 工具栏分行：桌面两行自然并排成一行，窄屏上下堆叠 */
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 多边形绘制中的浮出操作组 */
+.poly-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--control);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.poly-count {
+  font-size: 12px;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.poly-count b {
+  color: var(--primary);
+  font-size: 13px;
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 只在宽屏显示的文字（窄屏按钮上省掉） */
+.only-wide {
+  display: inline;
+}
+
+/* 顶栏的面板开关：桌面用左侧贴边标签，不需要它 */
+.header-panel-btn {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--control);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 抽屉遮罩：只有窄屏抽屉需要 */
+.scrim {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: scrim-in 0.2s ease-out;
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------------- 响应式：移动端 ---------------- */
+/* ⚠️ 这个条件必须与 src/utils/device.ts 的 MOBILE_MEDIA_QUERY 逐字一致，
+   否则 JS 判定为移动端、CSS 却按桌面渲染，状态与样式会打架。
+   `(pointer: coarse) and (max-width: 1100px)` 那半截是给手机横屏用的：
+   横过来有 900+ px，纯按宽度判会掉回依赖悬停/双击的桌面布局。 */
+
+@media (max-width: 820px), (pointer: coarse) and (max-width: 1100px) {
+  /* ---- 顶栏：压成一条，只留品牌 / 搜索 / 面板开关 ---- */
+  .app-header {
+    padding: 8px 10px;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .brand {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .brand-icon {
+    font-size: 21px;
+  }
+
+  .brand h1 {
+    font-size: 15px;
+    white-space: nowrap;
+  }
+
+  .brand p {
+    display: none;
+  }
+
+  /* 步骤指示器在窄屏纯占地方：进度感由工具栏与提示条承担 */
+  .stepper {
+    display: none;
+  }
+
+  .header-tools {
+    margin-left: auto;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  .search-box {
+    min-width: 0;
+  }
+
+  .search-box input {
+    width: 116px;
+    padding: 8px 9px;
+    font-size: 13px;
+  }
+
+  /* 下拉不再被输入框宽度限制，向左展开避免溢出屏幕 */
+  .search-results {
+    left: auto;
+    right: 0;
+    width: 268px;
+    max-width: calc(100vw - 20px);
+  }
+
+  .header-panel-btn {
+    display: inline-flex;
+    padding: 8px 10px;
+    min-height: 38px;
+  }
+
+  /* ---- 浮层居中基准：窄屏没有左右夹住地图的浮窗 ---- */
+  .app-main,
+  .app-main.with-sidebar,
+  .app-main.with-results {
+    --ov-left: 0px;
+    --ov-right: 0px;
+  }
+
+  /* ---- 左侧面板：改为抽屉 ---- */
+  .sidebar {
+    top: calc(var(--header-h) + 8px);
+    left: 8px;
+    bottom: 8px;
+    width: min(312px, 86vw);
+    max-height: none;
+    z-index: 8; /* 要压住底部工具栏(7)，所以比桌面版的 6 高一级 */
+    padding: 13px;
+    /* 桌面版继承的是 rgba(255,255,255,.72) + blur(16px)：浮在地图上时这点透明度
+       是让地图「透气」的设计感。但抽屉压住的是工具栏 UI（含蓝色主按钮），
+       半透明 + 大半径模糊会把「开始分析」糊成一块脏蓝印子贴在抽屉下沿
+       （390×844 实测可见）。抽屉背后没有需要透气的地图，直接换实色。 */
+    background: #fff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .sidebar.is-collapsed {
+    transform: translateX(calc(-100% - 16px));
+  }
+
+  /* 抽屉变窄，内容回到纵向单列 */
+  .sidebar-scroll {
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  .new-analysis-btn {
+    width: 100%;
+    flex: none;
+    min-height: 46px;
+  }
+
+  .basemap-list {
+    flex: none;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .basemap-btn {
+    min-height: 44px;
+    padding: 9px 8px;
+    font-size: 13px;
+  }
+
+  .layer-switch {
+    min-height: 44px;
+    padding: 10px 11px;
+  }
+
+  .layer-switch input {
+    width: 18px;
+    height: 18px;
+  }
+
+  .history-section {
+    width: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .history-main {
+    padding: 11px 10px;
+  }
+
+  /* 触屏上 30px 的点按区太小，容易点错到隔壁 */
+  .history-rename,
+  .history-del {
+    width: 44px;
+    font-size: 15px;
+  }
+
+  .history-rename {
+    font-size: 16px;
+  }
+
+  .scrim {
+    display: block;
+  }
+
+  /* 桌面用的贴边展开标签：窄屏有顶栏按钮与底部 sheet，不需要 */
+  .float-tab {
+    display: none;
+  }
+
+  /* ---- 工具栏：移到底部（拇指可达），两行 ---- */
+  .toolbar {
+    top: auto;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    left: 10px;
+    right: 10px;
+    transform: none;
+    max-width: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 9px;
+    border-radius: 14px;
+  }
+
+  .toolbar-row {
+    gap: 8px;
+  }
+
+  .tool-group,
+  .mode-group {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .tool-btn,
+  .mode-btn {
+    flex: 1;
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 6px;
+    font-size: 13.5px;
+  }
+
+  .tool-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .toolbar-divider {
+    height: 28px;
+  }
+
+  /* 窄屏按钮省掉「选择」二字，只留矩形 / 多边形 */
+  .only-wide {
+    display: none;
+  }
+
+  .toolbar-row:last-child {
+    flex-wrap: wrap;
+  }
+
+  .poly-actions {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    padding: 4px 6px 4px 12px;
+    min-height: 46px;
+  }
+
+  .poly-actions .btn-secondary,
+  .poly-actions .btn-primary {
+    min-height: 38px;
+    padding: 8px 16px;
+    font-size: 13.5px;
+  }
+
+  .btn-analyze {
+    flex: 1 1 100%;
+    min-height: 48px;
+    padding: 12px 18px;
+    font-size: 15.5px;
+  }
+
+  /* ---- 提示 / 错误：底部被工具栏占用，改到顶部 ---- */
+  .hint-banner {
+    top: calc(var(--header-h) + 10px);
+    bottom: auto;
+    left: 10px;
+    right: 10px;
+    transform: none;
+    max-width: none;
+    white-space: normal;
+    text-align: center;
+    font-size: 12.5px;
+    line-height: 1.5;
+    padding: 8px 12px;
+    border-radius: 12px;
+  }
+
+  .error-banner {
+    top: calc(var(--header-h) + 10px);
+    left: 10px;
+    right: 10px;
+    transform: none;
+    max-width: none;
+    justify-content: space-between;
+  }
+
+  /* ---- 结果面板：底部 sheet，可收起到只露标题 ---- */
+  .results-panel {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    /* 展开态最多占七成屏幕，留三成给地图 —— 对照分析时看得见画像很重要。
+       全文正文在 .results-body 里独立滚动，所以这个上限不影响可读性。
+       ⚠️ 480px 断点里不要再写 .results-panel 的 max-height，会把它覆盖掉。 */
+    max-height: 70vh;
+    border-radius: 18px 18px 0 0;
+    border-bottom: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* 折叠动画改吃 max-height：translateY 的百分比是相对**自身高度**算的，
+       而折叠态正文被 display:none 后，面板自身只剩头部那么高，
+       算出来是个负值，面板会往上跑而不是收下去。 */
+    transition: max-height 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  /* 窄屏不「滑出屏幕外」，而是收成只露标题的一条，点横条就能再展开。
+     96px = 实测头部高（横条 28 + 标题两行 ~40 + 上下 padding 20 + 边框 1 ≈ 89）+ 余量。
+     ⚠️ 这个值不能凭 padding 反推 —— 之前按 72px 写，实测头部装不下，
+     面板底边被顶到视口外、下沿 padding 被裁。改 .results-head 的字体或内边距后要重新量
+     （.workbuddy/tools/probe-sheet.html 会打印 head.h 与 collapsed 底边）。 */
+  .results-panel.is-collapsed {
+    transform: none;
+    max-height: 96px;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* 折叠态只留头部：正文与图层切换都收走
+     （导出按钮住在正文最后一节里，跟着 .results-body 一起隐藏） */
+  .results-panel.is-collapsed .layer-selects,
+  .results-panel.is-collapsed .results-body {
+    display: none;
+  }
+
+  .results-head {
+    padding: 8px 14px 12px;
+  }
+
+  /* 顶部横条 = 展开/收起开关本身。
+     之前它是个纯装饰的 ::before 伪元素，收起只能点右上角那个 26px 小按钮，
+     手机上很难点中；现在横条自己就是按钮，触控高度 28px。 */
+  .sheet-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    margin: -4px 0 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .sheet-handle-bar {
+    width: 44px;
+    height: 5px;
+  }
+
+  .sheet-handle:active .sheet-handle-bar {
+    background: var(--primary);
+  }
+
+  .results-title h2 {
+    font-size: 16px;
+  }
+
+  .results-head-btns .btn-ghost {
+    min-height: 36px;
+    padding: 6px 10px;
+  }
+
+  /* 横条已经能展开收起了，右上角的小按钮在窄屏上纯属重复 */
+  .panel-toggle {
+    display: none;
+  }
+
+  .results-body {
+    padding: 12px 14px 20px;
+  }
+
+  /* 窄屏：两个下拉各占一行，选择框撑满、触控高度够大 */
+  .layer-select {
+    flex: 1 1 100%;
+  }
+
+  .layer-select > select {
+    min-height: 40px;
+    font-size: 13px;
+  }
+
+  .export-btns .btn-secondary,
+  .export-btns .btn-primary {
+    flex: 1;
+    min-height: 42px;
+    font-size: 13.5px;
+  }
+
+  .result-section {
+    margin-bottom: 20px;
+  }
+
+  .result-section h3 {
+    font-size: 14.5px;
+  }
+
+  .section-lead,
+  .description p {
+    font-size: 13.5px;
+  }
+
+  .stat-grid {
+    gap: 8px;
+  }
+
+  .stat-card {
+    padding: 9px 10px;
+  }
+
+  .stat-value {
+    font-size: 17px;
+  }
+
+  .extreme-value {
+    font-size: 19px;
+  }
+
+  .inline-stats {
+    gap: 10px 14px;
+    font-size: 12.5px;
+  }
+
+  /* 缩放按钮让位给顶部提示条；小屏上双指缩放更自然 */
+  .maplibregl-ctrl-top-right {
+    display: none;
+  }
+
+  /* 比例尺与版权避让底部工具栏 */
+  .maplibregl-ctrl-bottom-left,
+  .maplibregl-ctrl-bottom-right {
+    bottom: 118px;
+  }
+
+  /* 选区中心浮标的「清除」按钮：手指点得到 */
+  .area-tag {
+    font-size: 12px;
+    padding: 5px 9px;
+  }
+
+  .area-tag-clear {
+    width: 24px;
+    height: 24px;
+    font-size: 15px;
+  }
+
+  /* ---- 分析进度弹窗 ---- */
+  .progress-card {
+    width: calc(100vw - 40px);
+    max-width: 340px;
+    padding: 24px 20px;
+  }
+
+  .progress-cancel {
+    min-height: 46px;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand h1 {
+    font-size: 14px;
+  }
+
+  .search-box input {
+    width: 100px;
+  }
+
+  .header-panel-btn {
+    padding: 8px 9px;
+  }
+
+  /* 四个工具按钮 + 分隔线在 320px 上挤不下：去掉分隔线，靠间距分组 */
+  .toolbar-divider {
+    display: none;
+  }
+
+  .tool-btn,
+  .mode-btn {
+    padding: 10px 4px;
+    font-size: 12.5px;
+  }
+
+  .extreme-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* 这里曾有一条 `.results-panel { max-height: 82vh }`。
+     断点更靠后 → 在 390/430 这类小屏上把上面 820 段定的 70vh 又顶了回去，
+     结果屏幕越小面板越高（82vh 只剩 152px 地图）。已删除，小屏同样走 70vh。 */
+}
