@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { MapViewHandle } from './MapView'
-import { AMAP_KEY, AMAP_GEOCODE_URL, NOMINATIM_SEARCH_URL } from '../config'
+import { AMAP_KEY, AMAP_GEOCODE_URL, NOMINATIM_SEARCH_URL, PHOTON_SEARCH_URL } from '../config'
 import { gcj02ToWgs84, wgs84ToGcj02 } from '../utils/crs'
 
 interface SearchBoxProps {
@@ -12,11 +12,27 @@ interface SearchResult {
   display_name: string
   lat: string
   lon: string
-  /** 数据来源：高德返回 GCJ-02，Nominatim 返回 WGS84 */
-  src: 'amap' | 'nominatim'
+  /** 数据来源：高德返回 GCJ-02；Photon / Nominatim（OSM 系）返回 WGS84 */
+  src: 'amap' | 'photon' | 'nominatim'
 }
 
-// 结果缓存：同一查询不重复请求，降低限流风险
+/** 单请求超时：搜索框体验优先，挂掉的源不等它自己超时（实测 Nominatim 国内直连会挂 15s+） */
+const FETCH_TIMEOUT_MS = 8000
+
+/** fetch + 超时 + JSON；任何失败都返回 null，由调用方决定回退 */
+async function fetchJSON(url: string, init?: RequestInit): Promise<unknown | null> {
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+// 结果缓存：同一查询不重复请求，降低限流风险。
+// ⚠️ 只缓存非空结果——网络抖动导致的空结果不能被记住，
+// 否则本次会话里这个词永远搜不出（用户感知就是"搜索坏了"）。
 const cache = new Map<string, SearchResult[]>()
 
 async function geocode(q: string): Promise<SearchResult[]> {
@@ -29,44 +45,67 @@ async function geocode(q: string): Promise<SearchResult[]> {
 
   // 1) 高德地理编码（国内覆盖好，需已配置 AMAP_KEY）
   if (AMAP_KEY) {
-    try {
-      const url = `${AMAP_GEOCODE_URL}?key=${AMAP_KEY}&address=${encodeURIComponent(q)}`
-      const res = await fetch(url)
-      const data = await res.json()
-      if (data?.status === '1' && Array.isArray(data.geocodes)) {
-        results = data.geocodes
-          .map((g: { formatted_address?: string; location?: string }) => {
-            const [lon, lat] = (g.location || '').split(',').map(Number)
-            if (!isFinite(lon) || !isFinite(lat)) return null
-            return {
-              display_name: g.formatted_address || q,
-              lat: String(lat),
-              lon: String(lon),
-              src: 'amap' as const,
-            }
-          })
-          .filter((r: SearchResult | null): r is SearchResult => r !== null)
-      }
-    } catch {
-      // 高德失败时回退 Nominatim
+    const data = (await fetchJSON(
+      `${AMAP_GEOCODE_URL}?key=${AMAP_KEY}&address=${encodeURIComponent(q)}`,
+    )) as { status?: string; geocodes?: { formatted_address?: string; location?: string }[] } | null
+    if (data?.status === '1' && Array.isArray(data.geocodes)) {
+      results = data.geocodes
+        .map((g) => {
+          const [lon, lat] = (g.location || '').split(',').map(Number)
+          if (!isFinite(lon) || !isFinite(lat)) return null
+          return {
+            display_name: g.formatted_address || q,
+            lat: String(lat),
+            lon: String(lon),
+            src: 'amap' as const,
+          }
+        })
+        .filter((r): r is SearchResult => r !== null)
     }
   }
 
-  // 2) 兜底 Nominatim（海外地名 / 高德无结果或未配置 key），返回 WGS84
+  // 2) 兜底 Photon（OSM 系，免 key，国内可达；Nominatim 国内经常整站连不上）
   if (results.length === 0) {
-    try {
-      const res = await fetch(
-        `${NOMINATIM_SEARCH_URL}?format=json&limit=5&q=${encodeURIComponent(q)}`,
-        { headers: { 'Accept-Language': 'zh-CN,en' } },
-      )
-      const arr = (await res.json()) as Omit<SearchResult, 'src'>[]
-      results = arr.map((r) => ({ ...r, src: 'nominatim' as const }))
-    } catch {
-      results = []
+    const data = (await fetchJSON(
+      `${PHOTON_SEARCH_URL}?q=${encodeURIComponent(q)}&limit=5`,
+    )) as {
+      features?: {
+        geometry?: { coordinates?: [number, number] }
+        properties?: Record<string, string>
+      }[]
+    } | null
+    if (Array.isArray(data?.features)) {
+      results = data!.features
+        .map((f) => {
+          const coord = f.geometry?.coordinates
+          const p = f.properties || {}
+          const name = p.name || p.street || p.district || p.city
+          if (!coord || !name) return null
+          // 展示名拼上行政区划（有则拼），类似 Nominatim 的 display_name
+          const parts = [p.state, p.country].filter((v, i, a) => v && v !== name && a.indexOf(v) === i)
+          return {
+            display_name: [name, ...parts].join(', '),
+            lat: String(coord[1]),
+            lon: String(coord[0]),
+            src: 'photon' as const,
+          }
+        })
+        .filter((r): r is SearchResult => r !== null)
     }
   }
 
-  cache.set(key, results)
+  // 3) 最后兜底 Nominatim（海外部署 / Photon 也挂时），返回 WGS84
+  if (results.length === 0) {
+    const arr = (await fetchJSON(
+      `${NOMINATIM_SEARCH_URL}?format=json&limit=5&q=${encodeURIComponent(q)}`,
+      { headers: { 'Accept-Language': 'zh-CN,en' } },
+    )) as Omit<SearchResult, 'src'>[] | null
+    if (Array.isArray(arr)) {
+      results = arr.map((r) => ({ ...r, src: 'nominatim' as const }))
+    }
+  }
+
+  if (results.length > 0) cache.set(key, results)
   return results
 }
 
@@ -116,8 +155,8 @@ export function SearchBox({ mapRef, isGcj }: SearchBoxProps) {
     // 地图坐标 = 显示 CRS。高德底图需 GCJ-02，其余用 WGS84。
     let lng = +r.lon
     let lat = +r.lat
-    if (isGcj && r.src === 'nominatim') {
-      // Nominatim 是 WGS84 → 高德底图需要 GCJ-02
+    if (isGcj && r.src !== 'amap') {
+      // Photon / Nominatim 是 WGS84 → 高德底图需要 GCJ-02
       ;[lng, lat] = wgs84ToGcj02(lng, lat)
     } else if (!isGcj && r.src === 'amap') {
       // 高德返回 GCJ-02 → WGS84 底图需要转回

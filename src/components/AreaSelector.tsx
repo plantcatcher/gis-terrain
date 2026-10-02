@@ -170,9 +170,16 @@ export const AreaSelector = forwardRef<AreaSelectorHandle, AreaSelectorProps>(
     }
 
     /** 清空预览（只清数据，保留源与图层，避免反复重建） */
-    function clearTemp(m: MapLibreMap) {
-      const src = m.getSource(TEMP_SRC) as maplibregl.GeoJSONSource | undefined
-      src?.setData(EMPTY_FC as unknown as GeoJSON.Feature)
+    function clearTemp(m: MapLibreMap | undefined) {
+      if (!m) return
+      try {
+        const src = m.getSource(TEMP_SRC) as maplibregl.GeoJSONSource | undefined
+        src?.setData(EMPTY_FC as unknown as GeoJSON.Feature)
+      } catch {
+        // 地图已销毁 / style 已卸载（StrictMode 挂载-卸载-重挂时，MapView 的
+        // map.remove() 先于本组件 cleanup 跑）：忽略，否则未捕获异常会崩掉
+        // 整棵 React 树，dev 模式直接白屏。
+      }
     }
 
     function handlePolygon(m: MapLibreMap, polygon: Feature<Polygon>) {
