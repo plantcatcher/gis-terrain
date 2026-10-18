@@ -42,7 +42,7 @@ export default function App() {
   const isTouch = useIsTouch()
   const [phase, setPhase] = useState<Phase>('selecting')
   const [mode, setMode] = useState<SelectionMode>('rectangle')
-  const [tool, setTool] = useState<MapTool>('select')
+  const [tool, setTool] = useState<MapTool>('hand')
   const [selectedArea, setSelectedArea] = useState<SelectedArea | null>(null)
   const [result, setResult] = useState<TerrainAnalysisResult | null>(null)
   // 默认等高线：它最能读出地形结构与相对高差，也是面板里的第一项
