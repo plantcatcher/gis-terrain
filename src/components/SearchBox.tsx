@@ -50,7 +50,7 @@ async function geocode(q: string): Promise<SearchResult[]> {
     )) as { status?: string; geocodes?: { formatted_address?: string; location?: string }[] } | null
     if (data?.status === '1' && Array.isArray(data.geocodes)) {
       results = data.geocodes
-        .map((g) => {
+        .map((g): SearchResult | null => {
           const [lon, lat] = (g.location || '').split(',').map(Number)
           if (!isFinite(lon) || !isFinite(lat)) return null
           return {
@@ -76,7 +76,7 @@ async function geocode(q: string): Promise<SearchResult[]> {
     } | null
     if (Array.isArray(data?.features)) {
       results = data!.features
-        .map((f) => {
+        .map((f): SearchResult | null => {
           const coord = f.geometry?.coordinates
           const p = f.properties || {}
           const name = p.name || p.street || p.district || p.city
